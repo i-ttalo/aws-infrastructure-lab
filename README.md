@@ -375,4 +375,4 @@ The next versions of this project may include:
 
 This environment was created for educational and security-lab purposes.
 
-Sensitive information such as AWS Account IDs, public IP addresses, email addresses, credentials, access keys, and authentication secrets has been removed or redacted from the documentation.
+Sensitive information such as AWS Account IDs, public IP addresses, email addresses, credentials, access keys, and authentication secrets has been removed or redacted from the documentation.sS
