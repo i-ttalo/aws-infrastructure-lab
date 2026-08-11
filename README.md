@@ -86,7 +86,7 @@ A custom VPC was created with separate public and private subnets.
 
 The public subnet contains the Internet-facing EC2 workload, while the private subnet does not have direct Internet Gateway routing.
 
-### Network configuration
+### Network Configuration
 
 | Resource | Configuration |
 |---|---|
@@ -97,22 +97,9 @@ The public subnet contains the Internet-facing EC2 workload, while the private s
 
 ---
 
-## 2. Network Security
+## 2. IAM Least Privilege
 
-The EC2 Security Group follows different access requirements for public application traffic and administrative access.
-
-| Service | Protocol | Port | Source |
-|---|---|---:|---|
-| HTTP | TCP | 80 | `0.0.0.0/0` |
-| SSH | TCP | 22 | Administrator `/32` |
-
-HTTP is intentionally public because the Nginx server is designed to serve Internet clients.
-
-SSH is restricted because exposing an administrative interface to the entire Internet would unnecessarily increase the attack surface.
-
----
-
-## 3. IAM Least Privilege
+![IAM Least Privilege Policy](screenshots/iam/least-privilege.png)
 
 The EC2 instance accesses S3 through an IAM Role.
 
@@ -135,60 +122,46 @@ s3:DeleteObject
 s3:ListAllMyBuckets
 ```
 
-This allowed the workload to perform its required function without receiving unnecessary permissions.
+This allows the workload to perform its required function without receiving unnecessary permissions.
 
 ---
 
-## 4. Authorization Testing
+## 3. Unauthorized Action Investigation
 
-Least privilege was validated through intentional security tests.
+![CloudTrail AccessDenied Event](screenshots/cloudtrail/access-denied.png)
 
-A read-only IAM user was allowed to view EC2 resources but was not granted:
+A read-only IAM user attempted:
 
 ```text
 ec2:StopInstances
 ```
 
-When the user attempted to stop the instance, AWS returned:
+IAM denied the request because the identity did not have permission to perform that action.
 
-```text
-AccessDenied
-```
-
-The EC2 instance remained running.
-
-This confirmed that the authorization policy behaved as expected.
-
----
-
-## 5. CloudTrail Investigation
-
-The denied `StopInstances` request was investigated using AWS CloudTrail.
-
-The event provided information such as:
+CloudTrail recorded the attempt, allowing the event to be investigated using information such as:
 
 - User identity
 - Event timestamp
-- Source IP address
 - AWS Region
 - API action
-- User agent
-- Request parameters
+- Event source
 - Authorization result
 
-This demonstrated the difference between:
+This demonstrates the difference between:
 
 ```text
 IAM
--> decides whether an action is allowed
+-> determines whether an action is authorized
 
 CloudTrail
--> records activity for auditing and investigation
+-> records AWS API activity for auditing and investigation
 ```
 
 ---
 
-## 6. Monitoring and Alerting
+## 4. Monitoring and Alerting
+
+![CloudWatch CPU Alarm](screenshots/cloudwatch/cpu-alarm.png)
 
 Amazon CloudWatch was configured to monitor:
 
@@ -203,6 +176,8 @@ Average CPUUtilization > 10%
 ```
 
 CPU load was intentionally generated on the EC2 instance.
+
+The metric exceeded the configured threshold, causing the alarm to enter the `ALARM` state.
 
 ```text
 EC2 CPU Load
@@ -220,7 +195,34 @@ SNS Topic
 Email Notification
 ```
 
-The alarm successfully entered the `ALARM` state and an SNS email notification was received.
+The SNS email notification was successfully received.
+
+> The 10% CPU threshold was intentionally low for testing purposes and is not intended as a production recommendation.
+
+---
+
+## Network Security
+
+The EC2 Security Group was configured according to the access requirements of each service.
+
+| Service | Protocol | Port | Source |
+|---|---|---:|---|
+| HTTP | TCP | 80 | `0.0.0.0/0` |
+| SSH | TCP | 22 | Administrator `/32` |
+
+HTTP is intentionally public because the Nginx server is designed to serve Internet clients.
+
+SSH is restricted because exposing an administrative interface to the entire Internet would unnecessarily increase the attack surface.
+
+---
+
+## Data Protection
+
+The EC2 root EBS volume was encrypted using the default AWS-managed EBS key.
+
+The S3 bucket was configured as private with Block Public Access enabled.
+
+No long-term AWS credentials were manually stored on the EC2 instance.
 
 ---
 
@@ -229,14 +231,14 @@ The alarm successfully entered the `ALARM` state and an SNS email notification w
 | Decision | Security Reason |
 |---|---|
 | MFA enabled for the AWS root account | Adds an additional authentication factor |
-| Root account not used for daily access | Reduces exposure of the highest-privilege identity |
+| Root account not used for daily operations | Reduces exposure of the highest-privilege identity |
 | SSH restricted to `/32` | Reduces exposure of the administrative interface |
 | S3 Block Public Access enabled | Helps prevent unintended public data exposure |
 | IAM Role used by EC2 | Avoids storing long-term credentials on the server |
 | Least-privilege S3 policy | Limits workload permissions |
 | EBS encryption enabled | Protects data at rest |
-| Read-only IAM identity | Demonstrates separation of permissions |
-| CloudTrail auditing | Provides traceability of AWS API activity |
+| Read-only IAM identity | Demonstrates permission separation |
+| CloudTrail auditing | Provides traceability for AWS API activity |
 | CloudWatch monitoring | Provides infrastructure visibility |
 | SNS alerting | Provides notification when alarm conditions occur |
 
@@ -263,7 +265,7 @@ The alarm successfully entered the `ALARM` state and an SNS email notification w
 
 Several real configuration issues occurred during the project.
 
-### AWS Region mismatch
+### AWS Region Mismatch
 
 An IAM user appeared unable to view the EC2 instance.
 
@@ -271,7 +273,7 @@ The IAM policy was initially investigated, but the actual problem was that the A
 
 **Lesson:** Many AWS resources are regional, so Region should be checked early during troubleshooting.
 
-### SSH connectivity
+### SSH Connectivity
 
 SSH stopped responding even though the EC2 instance was running.
 
@@ -279,7 +281,7 @@ The Security Group allowed SSH only from a specific `/32`, while the administrat
 
 The rule was updated to the current administrator IP.
 
-**Lesson:** Network path and source restrictions should be verified before assuming that the server itself is unavailable.
+**Lesson:** Network path and source restrictions should be verified before assuming the server itself is unavailable.
 
 ### S3 AccessDenied
 
@@ -293,7 +295,7 @@ s3:ListAllMyBuckets
 
 **Lesson:** `AccessDenied` can indicate that least privilege is working correctly rather than indicating a broken configuration.
 
-### Local vs Cloud CPU testing
+### Local vs. Cloud CPU Testing
 
 CPU load was initially generated inside the local WSL environment rather than inside EC2.
 
@@ -368,3 +370,9 @@ The next versions of this project may include:
 - Infrastructure deployment through GitHub Actions
 
 ---
+
+## Disclaimer
+
+This environment was created for educational and security-lab purposes.
+
+Sensitive information such as AWS Account IDs, public IP addresses, email addresses, credentials, access keys, and authentication secrets has been removed or redacted from the documentation.
